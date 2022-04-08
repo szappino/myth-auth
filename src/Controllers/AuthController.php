@@ -1,22 +1,20 @@
 <?php namespace Myth\Auth\Controllers;
 
+use Config\Email;
 use CodeIgniter\Controller;
-use CodeIgniter\Session\Session;
-use Myth\Auth\Config\Auth as AuthConfig;
 use Myth\Auth\Entities\User;
 use Myth\Auth\Models\UserModel;
 
 class AuthController extends Controller
 {
 	protected $auth;
-
 	/**
-	 * @var AuthConfig
+	 * @var Auth
 	 */
 	protected $config;
 
 	/**
-	 * @var Session
+	 * @var \CodeIgniter\Session\Session
 	 */
 	protected $session;
 
@@ -45,14 +43,14 @@ class AuthController extends Controller
 		// is already logged in.
 		if ($this->auth->check())
 		{
-			$redirectURL = session('redirect_url') ?? site_url('/');
+			$redirectURL = session('redirect_url') ?? base_url();
 			unset($_SESSION['redirect_url']);
-
+            $redirectURL = base_url();
 			return redirect()->to($redirectURL);
 		}
 
         // Set a return URL if none is specified
-        $_SESSION['redirect_url'] = session('redirect_url') ?? previous_url() ?? site_url('/');
+        $_SESSION['redirect_url'] = session('redirect_url') ?? previous_url() ?? base_url();
 
 		return $this->_render($this->config->views['login'], ['config' => $this->config]);
 	}
@@ -87,7 +85,8 @@ class AuthController extends Controller
 		// Try to log them in...
 		if (! $this->auth->attempt([$type => $login, 'password' => $password], $remember))
 		{
-			return redirect()->back()->withInput()->with('error', $this->auth->error() ?? lang('Auth.badAttempt'));
+            $redirectURL = base_url();
+			return redirect()->to($redirectURL)->withInput()->with('error', $this->auth->error() ?? lang('Auth.badAttempt'));
 		}
 
 		// Is the user being forced to reset their password?
@@ -96,8 +95,10 @@ class AuthController extends Controller
 			return redirect()->to(route_to('reset-password') .'?token='. $this->auth->user()->reset_hash)->withCookies();
 		}
 
-		$redirectURL = session('redirect_url') ?? site_url('/');
+		$redirectURL = session('redirect_url') ?? base_url();
 		unset($_SESSION['redirect_url']);
+
+        $redirectURL = base_url();
 
 		return redirect()->to($redirectURL)->withCookies()->with('message', lang('Auth.loginSuccess'));
 	}
@@ -112,7 +113,7 @@ class AuthController extends Controller
 			$this->auth->logout();
 		}
 
-		return redirect()->to(site_url('/'));
+		return redirect()->to(base_url());
 	}
 
 	//--------------------------------------------------------------------
@@ -152,33 +153,25 @@ class AuthController extends Controller
 
 		$users = model(UserModel::class);
 
-		// Validate basics first since some password rules rely on these fields
+		// Validate here first, since some things,
+		// like the password, can only be validated properly here.
 		$rules = [
-			'username' => 'required|alpha_numeric_space|min_length[3]|max_length[30]|is_unique[users.username]',
-			'email'    => 'required|valid_email|is_unique[users.email]',
+			'username'  	=> 'required|alpha_numeric_space|min_length[3]|is_unique[users.username]',
+			'email'			=> 'required|valid_email|is_unique[users.email]',
+			'password'	 	=> 'required|strong_password',
+			'pass_confirm' 	=> 'required|matches[password]',
 		];
 
 		if (! $this->validate($rules))
 		{
-			return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
-		}
-
-		// Validate passwords since they can only be validated properly here
-		$rules = [
-			'password'     => 'required|strong_password',
-			'pass_confirm' => 'required|matches[password]',
-		];
-
-		if (! $this->validate($rules))
-		{
-			return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+			return redirect()->back()->withInput()->with('errors', service('validation')->getErrors());
 		}
 
 		// Save the user
 		$allowedPostFields = array_merge(['password'], $this->config->validFields, $this->config->personalFields);
 		$user = new User($this->request->getPost($allowedPostFields));
 
-		$this->config->requireActivation === null ? $user->activate() : $user->generateActivateHash();
+		$this->config->requireActivation !== false ? $user->generateActivateHash() : $user->activate();
 
 		// Ensure default group gets assigned if set
         if (! empty($this->config->defaultUserGroup)) {
@@ -190,7 +183,7 @@ class AuthController extends Controller
 			return redirect()->back()->withInput()->with('errors', $users->errors());
 		}
 
-		if ($this->config->requireActivation !== null)
+		if ($this->config->requireActivation !== false)
 		{
 			$activator = service('activator');
 			$sent = $activator->send($user);
@@ -217,7 +210,7 @@ class AuthController extends Controller
 	 */
 	public function forgotPassword()
 	{
-		if ($this->config->activeResetter === null)
+		if ($this->config->activeResetter === false)
 		{
 			return redirect()->route('login')->with('error', lang('Auth.forgotDisabled'));
 		}
@@ -231,23 +224,11 @@ class AuthController extends Controller
 	 */
 	public function attemptForgot()
 	{
-		if ($this->config->activeResetter === null)
+		if ($this->config->activeResetter === false)
 		{
 			return redirect()->route('login')->with('error', lang('Auth.forgotDisabled'));
 		}
 
-		$rules = [
-			'email' => [
-				'label' => lang('Auth.emailAddress'),
-				'rules' => 'required|valid_email',
-			],
-		];
-
-		if (! $this->validate($rules))
-		{
-			return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
-		}
-        
 		$users = model(UserModel::class);
 
 		$user = $users->where('email', $this->request->getPost('email'))->first();
@@ -277,16 +258,20 @@ class AuthController extends Controller
 	 */
 	public function resetPassword()
 	{
-		if ($this->config->activeResetter === null)
+		if ($this->config->activeResetter === false)
 		{
 			return redirect()->route('login')->with('error', lang('Auth.forgotDisabled'));
 		}
 
 		$token = $this->request->getGet('token');
 
+		$users = model('UserModel');
+		$user = $users->where( 'reset_hash', $token )->first();
+
 		return $this->_render($this->config->views['reset'], [
 			'config' => $this->config,
 			'token'  => $token,
+			'email'  => (isset($user->email) && !empty($user->email) ) ? $user->email : '',
 		]);
 	}
 
@@ -298,7 +283,7 @@ class AuthController extends Controller
 	 */
 	public function attemptReset()
 	{
-		if ($this->config->activeResetter === null)
+		if ($this->config->activeResetter === false)
 		{
 			return redirect()->route('login')->with('error', lang('Auth.forgotDisabled'));
 		}
@@ -314,15 +299,38 @@ class AuthController extends Controller
 		);
 
 		$rules = [
-			'token'		=> 'required',
-			'email'		=> 'required|valid_email',
-			'password'	 => 'required|strong_password',
-			'pass_confirm' => 'required|matches[password]',
+			'token'		=> [
+				'rules' => 'required',
+				'errors' => [
+					'required'	=>	'Il campo Token è obbligatorio',
+				]
+			],
+			'email'		=> [
+				'rules'=>'required|valid_email',
+				'errors' => [
+					'required'	=>	'Il campo Email è obbligatorio',
+					'valid_email' => 'Non hai inserito una email valida'
+				]
+			],
+			'password'	 => [
+				'rules' =>'required|strong_password',
+				'errors' => [
+					'required'	=>	'Il campo Password è obbligatorio',
+					'strong_password' => 'La Password inserita non è abbastanza efficace.'
+				]
+			],
+			'pass_confirm' => 	[
+				'rules' => 'required|matches[password]',
+				'errors' => [
+					'required'	=>	'Il campo Conferma Password è obbligatorio',
+					'matches' => 'Il campo Password e il campo Conferma Password non corrispondono'
+				]
+			],
 		];
 
 		if (! $this->validate($rules))
 		{
-			return redirect()->back()->withInput()->with('errors', $this->validator->getErrors());
+			return redirect()->back()->withInput()->with('errors', $users->errors());
 		}
 
 		$user = $users->where('email', $this->request->getPost('email'))
@@ -348,7 +356,13 @@ class AuthController extends Controller
         $user->force_pass_reset = false;
 		$users->save($user);
 
-		return redirect()->route('login')->with('message', lang('Auth.resetSuccess'));
+		if (! $this->auth->attempt(['email' => $user->email , 'password' => $this->request->getPost('password') ], true))
+		{
+			return redirect()->back()->withInput()->with('error', $this->auth->error() ?? lang('Auth.badAttempt'));
+		}
+
+		return redirect()->to(base_url().'/frontend');
+		//return redirect()->route('login')->with('message', lang('Auth.resetSuccess'));
 	}
 
 	/**
@@ -369,7 +383,7 @@ class AuthController extends Controller
 
 		$throttler = service('throttler');
 
-		if ($throttler->check(md5($this->request->getIPAddress()), 2, MINUTE) === false)
+		if ($throttler->check($this->request->getIPAddress(), 2, MINUTE) === false)
         {
 			return service('response')->setStatusCode(429)->setBody(lang('Auth.tooManyRequests', [$throttler->getTokentime()]));
         }
@@ -397,14 +411,14 @@ class AuthController extends Controller
 	 */
 	public function resendActivateAccount()
 	{
-		if ($this->config->requireActivation === null)
+		if ($this->config->requireActivation === false)
 		{
 			return redirect()->route('login');
 		}
 
 		$throttler = service('throttler');
 
-		if ($throttler->check(md5($this->request->getIPAddress()), 2, MINUTE) === false)
+		if ($throttler->check($this->request->getIPAddress(), 2, MINUTE) === false)
 		{
 			return service('response')->setStatusCode(429)->setBody(lang('Auth.tooManyRequests', [$throttler->getTokentime()]));
 		}

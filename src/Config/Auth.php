@@ -35,12 +35,12 @@ class Auth extends BaseConfig
 	 * @var array
 	 */
 	public $views = [
-		'login'		   => 'Myth\Auth\Views\login',
-		'register'		=> 'Myth\Auth\Views\register',
-		'forgot'		  => 'Myth\Auth\Views\forgot',
-		'reset'		   => 'Myth\Auth\Views\reset',
-		'emailForgot'	 => 'Myth\Auth\Views\emails\forgot',
-		'emailActivation' => 'Myth\Auth\Views\emails\activation',
+		'login'		   		=> 'login',
+		'register'			=> 'register',
+		'forgot'		  	=> 'forgot',
+		'reset'		   		=> 'reset',
+		'emailForgot'	 	=> 'Myth\Auth\Views\emails\forgot',
+		'emailActivation' 	=> 'Myth\Auth\Views\emails\activation',
 	];
 
 	/**
@@ -145,7 +145,7 @@ class Auth extends BaseConfig
 	 * When enabled, every registered user will receive an email message
 	 * with an activation link to confirm the account.
 	 *
-	 * @var string|null Name of the ActivatorInterface class
+	 * @var string Name of the ActivatorInterface class
 	 */
 	public $requireActivation = 'Myth\Auth\Authentication\Activators\EmailActivator';
 
@@ -157,7 +157,7 @@ class Auth extends BaseConfig
 	 * When enabled, users will have the option to reset their password
 	 * via the specified Resetter. Default setting is email.
 	 *
-	 * @var string|null Name of the ResetterInterface class
+	 * @var string Name of the ResetterInterface class
 	 */
 	public $activeResetter = 'Myth\Auth\Authentication\Resetters\EmailResetter';
 
@@ -217,7 +217,7 @@ class Auth extends BaseConfig
 	 */
 	public $hashAlgorithm = PASSWORD_DEFAULT;
 
-	/**
+	/*
 	 * --------------------------------------------------------------------
 	 * ARGON2i/D Algorithm options
 	 * --------------------------------------------------------------------

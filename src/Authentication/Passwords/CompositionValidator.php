@@ -19,16 +19,6 @@ use Myth\Auth\Exceptions\AuthException;
  */
 class CompositionValidator extends BaseValidator implements ValidatorInterface
 {
-	/**
-	 * @var string
-	 */
-    protected $error = '';
-
-	/**
-	 * @var string
-	 */
-    protected $suggestion = '';
-
     /**
      * Returns true when the password passes this test. 
      * The password will be passed to any remaining validators.
@@ -48,9 +38,9 @@ class CompositionValidator extends BaseValidator implements ValidatorInterface
 
         $passed = strlen($password) >= $this->config->minimumPasswordLength;
 
-        if (! $passed)
+        if(! $passed)
         {
-            $this->error      = lang('Auth.errorPasswordLength', [$this->config->minimumPasswordLength]);
+            $this->error = lang('Auth.errorPasswordLength', [$this->config->minimumPasswordLength]);
             $this->suggestion = lang('Auth.suggestPasswordLength');
             
             return false;
